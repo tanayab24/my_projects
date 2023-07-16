@@ -1,0 +1,405 @@
+---
+title: "Capstone case study"
+author: "Tanaya B"
+date: '2022-07-11'
+output: html_document
+---
+# **Capstone project: Bellabeat smart device usage data analysis**
+
+##### **The project scenario** 
+Bellabeat is a high-tech manufacturer of health-focused products for women. As a junior data analyst working on their marketing analyst team, I have been asked focus on a Bellabeat product and analyze smart device usage data in order to gain insight into how people are already using their smart devices. The insights I discover will then help guide marketing strategy for the company.
+
+##### **My goal** 
+I have to present my analysis/insights about smart device usage data that is publically available and based on that, I have to give high-level recommendations for a Bellabeat product’s marketing strategy.
+The Bellabeat product I picked for my project is Leaf - Bellabeat’s classic wellness tracker can be worn as a bracelet, necklace, or clip. The **Leaf tracker** connects to the Bellabeat app to track activity, sleep, and stress.
+
+##### **My data source**
+FitBit Fitness Tracker Data (CC0: Public Domain, dataset made available through Mobius): This Kaggle data set contains personal fitness tracker from thirty fitbit users. Thirty eligible Fitbit users consented to the submission of personal tracker data, including minute-level output for physical activity, heart rate, and sleep monitoring. It includes information about daily activity, steps, and heart rate that can be used to explore users’ habits.
+
+### **ASK** 
+*Identified business task:*  
+
+* Analysis of FitBit tracker user data with respect to activity, sleep and stress.  
+* Take significant insights from the trends observed during data analysis and give recommendation for Bellabeat Leaf tracker’s marketing strategy.
+
+*Considered key stakeholders:*  
+
+* U.S. - Bellabeat’s cofounder & Chief Creative Officer  
+* S.M. - Bellabeat’s cofounder & key member of the executive team  
+* Bellabeat marketing analytics team
+
+### **PREPARE**  
+
+* Downloaded zip file containing 18 CSV files of data.  
+
+* Browsed through each in MS Excel to gain some idea about the data.  
+
+* Files I decided to use  
+  * daily_Activity_merged.csv  
+  * hourlySteps_merged.csv  
+  * sleepDay_merged.csv
+  * weightLogInfo_merged.csv  
+  
+* Decided to do the rest of processing, analysis and visualization in R.  
+
+* *Loaded all necessary packages*  
+```{r}
+library(lubridate)
+library(janitor)
+library(tidyverse)
+library(ggpubr)
+```
+
+* *Set working directory to the location of the .csv files*
+```{r include=FALSE}
+setwd("C:/Users/Tanaya Bhattacharya/Data analytics course/course8-Capstone/capstone case study")
+```
+
+* *Imported all relevant data files*  
+```{r}
+activity <- read_csv("dailyActivity_merged.csv")
+sleep <- read_csv("sleepDay_merged.csv")
+hourlysteps <- read_csv("hourlySteps_merged.csv")
+weight <- read_csv("weightLogInfo_merged.csv")
+```
+
+* *Is data size enough for significant analysis ?*  
+```{r}
+n_distinct(activity$Id)
+n_distinct(sleep$Id)
+n_distinct(hourlysteps$Id)
+n_distinct(weight$Id)
+```
+
+**Conclusion: Data limitations**  
+
+* *activity* has data from 33 distinct users and can therefore be used for analysis. However, this is a small sample size so a larger sample size is expected to give more accurate results.  
+
+* *hourly_steps* has data from 33 distinct users and can therefore be used for analysis. However, this is a small sample size so a larger sample size is expected to give more accurate results.  
+
+* *sleep* has data from 24 distinct users and is therefore a little insufficient for analysis (a minimum of 31 datasets is required for conducting any analyses). However, it may be used for some simple analyses.  
+
+* *weight* has data from only 8 distinct users and is highly insufficient for conducting any significant analysis. Therefore, I won't use it any further.  
+
+### **PROCESS**  
+
+Getting a general idea of the structure and distribution of data in each file.
+```{r}
+head(activity)
+glimpse(activity)
+
+head(hourlysteps)
+glimpse(hourlysteps)
+
+head(sleep)
+glimpse(sleep)
+```
+
+Finding and removing duplicates if any.
+```{r}
+sum(duplicated(activity))
+sum(duplicated(sleep))
+sum(duplicated(hourlysteps))
+
+#There are three duplicates in sleep file. Removed them.
+daily_sleep <- sleep %>% distinct() %>% drop_na()
+```
+
+Cleaning column names.
+```{r}
+clean_names(activity)
+clean_names(daily_sleep)
+clean_names(hourlysteps)
+```
+
+Making all column names uniform - changing to lower case:
+```{r}
+daily_activity <- rename_with(activity, tolower)
+daily_sleep <- rename_with(daily_sleep, tolower)
+hourly_steps <- rename_with(hourlysteps, tolower)
+```
+
+Found an issue with the date and time formatting. Making it consistent:
+```{r}
+daily_activity <- daily_activity %>%
+  rename(date = activitydate) %>%
+  mutate(date = as_date(date, format = "%m/%d/%Y"))
+
+daily_sleep <- daily_sleep %>%
+  rename(date = sleepday) %>%
+  mutate(date = as_date(date, format = "%m/%d/%Y"))
+
+hourly_steps <- hourly_steps %>% 
+  rename(date_time = activityhour) %>% 
+  mutate(date_time = as.POSIXct(date_time,format ="%m/%d/%Y %I:%M:%S %p" , tz=Sys.timezone()))
+hourly_steps_sep <- separate(hourly_steps, date_time, c("date", "time"),sep=" ")
+```
+
+### **ANALYSIS & SHARING(VISUALIZATION)**  
+
+#### *User Activity pattern analysis*  
+
+##### **Daily steps analysis**
+```{r}
+stp <- daily_activity %>% 
+  group_by(id) %>% 
+  summarise(mean_daily_steps=mean(totalsteps))
+
+steps_daily_summary <- stp %>% 
+  mutate(Daily_activity = case_when(
+    mean_daily_steps>=10000~"Very active",
+    mean_daily_steps>=7500 & mean_daily_steps<10000~"Active",
+    mean_daily_steps>=5000 & mean_daily_steps<7500~"Less active",
+    mean_daily_steps<5000~"Inactive" ))
+
+head(steps_daily_summary)
+steps_daily_summary$id <- as.factor(steps_daily_summary$id)
+
+ggplot(steps_daily_summary)+
+  geom_col(aes(x=id,y=mean_daily_steps,fill=Daily_activity))+
+  theme(axis.text.x = element_text(angle = 90))+
+  labs(title = "How active are the users?",
+       subtitle = "Mean steps per day count",
+       y = "Mean daily steps",
+       x = "User ID",
+       fill = "User activity level")
+
+daily_user_steps <- steps_daily_summary %>% 
+  group_by(Daily_activity) %>% 
+  summarise(total = n()) %>% 
+  mutate(sum_total = sum(total)) %>% 
+  group_by(Daily_activity) %>% 
+  summarise(daily_steps = total/sum_total) %>% 
+  mutate(percent = daily_steps*100)
+
+daily_user_steps
+
+ggplot(daily_user_steps)+
+  geom_col(aes(x=Daily_activity,y=percent,fill=Daily_activity))+
+  labs(title = "User daily activity level summary",
+       x = " ",
+       y = "Percentage",
+       fill = "User activity level")+
+  theme(axis.text.x = element_blank())
+```
+
+*Conclusions*  
+
+* The data of this cohort reflects that 48.5% of users are pretty active while 24.2% would be classified as inactive. About 27.3% are considered to be less active.  
+* To remain healthy, an adult is recommended to complete at least 7500 steps a day. To lose weight at least 10,000 steps is advised.(References: [CDC](https://www.cdc.gov/physicalactivity/basics/adults/) and [healthline](https://www.healthline.com/health/how-many-steps-a-day#How-many-steps-should-you-take-a-day?))
+
+
+##### **Hourly steps analysis - When are users most active?**
+```{r}
+hourly_steps_sep %>% 
+  group_by(time) %>% 
+  summarise(steps_mean=mean(steptotal)) %>% 
+  ggplot()+
+  geom_col(mapping = aes(x=time,y=steps_mean,fill=steps_mean))+
+  theme(axis.text.x = element_text(angle=90))+
+  labs(title="Hourly steps analysis",
+       subtitle = "What time in a day are people most active?",
+       x="Hour",
+       y="Mean steps",
+       fill="Average Steps")+
+  scale_fill_gradient(low = "yellow",high = "blue")
+```
+
+*Conclusions* 
+
+* Users are generally active from 6:00 AM to 10:00 PM in a day.  
+* 5:00 to 7:00 PM is the time period when users are most active.
+
+
+##### **Calories vs. Steps correlation**
+```{r}
+mean_activity <- daily_activity %>% 
+  group_by(id) %>% 
+  summarise(meancalories=mean(calories),averagesteps=mean(totalsteps))
+
+mean_activity
+
+ggarrange(
+  ggplot(daily_activity)+
+    geom_point(aes(x=calories,y=totalsteps))+
+    geom_smooth(aes(x=calories,y=totalsteps))+
+    labs(title = "Daily Steps vs. Calories burnt",
+         subtitle = "(for each entry)",
+         x = "Daily steps",
+         y = "Calories burnt"),
+  ggplot(mean_activity)+
+    geom_point(aes(x=meancalories,y=averagesteps))+
+    geom_smooth(aes(x=meancalories,y=averagesteps))+
+    labs(title = "Average daily steps vs. Mean calories burnt",
+       subtitle = "(for each Id)",
+       x = "Average daily steps",
+       y = "Mean calories burnt")
+)
+```
+
+*Conclusions*  
+
+* In general, there is a positive correlations between number of steps walked and calories burnt, that is, the more steps you walk the higher amount of calories you will burn.  
+* It must be noted that, this correlation varies from person to person as different people have different metabolic rates.
+
+##### **How regularly do users wear the tracker?**
+```{r}
+#Do all users wear the tracker daily?
+summary_activity <- daily_activity %>% count(id)
+summary_activity <- rename(summary_activity, data_days_count=n)
+summary_activity <- summary_activity %>% 
+  mutate(tracker_usage = case_when(
+    data_days_count == 31 ~"Everyday",
+    data_days_count >= 15 & data_days_count <31 ~ "Most days (50%+)",
+    data_days_count <15 ~"Few days (below 50%)"))
+
+summary_activity
+
+daily_tracker_usage_activity <- summary_activity %>%
+  group_by(tracker_usage) %>%
+  summarise(total = n()) %>%
+  mutate(total_users = sum(total)) %>%
+  group_by(tracker_usage) %>%
+  summarise(usage = total / total_users) %>%
+  mutate(usage_percent = usage*100)
+
+daily_tracker_usage_activity
+
+#Do all users wear the tracker throughout the day?
+summary_activity_hourly <- daily_activity %>% 
+  group_by(id) %>% 
+  mutate(totalminutesdata = veryactiveminutes + fairlyactiveminutes + 
+           lightlyactiveminutes + sedentaryminutes) %>% 
+  mutate(percentminutedata=(totalminutesdata/1440)*100) %>% 
+  mutate(tracker_usage_hourly=case_when(
+    percentminutedata==100~"24hrs",
+    percentminutedata >=50 & percentminutedata<100 ~"12hrs+",
+    percentminutedata<50 ~"Below 12hrs"))
+
+head(summary_activity_hourly)
+
+hourly_tracker_usage_activity <- summary_activity_hourly %>% 
+  group_by(tracker_usage_hourly) %>% 
+  summarise(total = n()) %>% 
+  mutate(sum_total = sum(total)) %>% 
+  group_by(tracker_usage_hourly) %>% 
+  summarise(hourly_usage = total/sum_total) %>% 
+  mutate(percent = hourly_usage*100)
+
+hourly_tracker_usage_activity
+
+ggarrange(
+  ggplot(daily_tracker_usage_activity)+
+    geom_col(aes(x=tracker_usage,y=usage_percent,fill=tracker_usage))+
+    geom_text(aes(x=tracker_usage,y=usage_percent,label=round(usage_percent)))+
+    expand_limits(y=c(0,100))+
+    theme(axis.text.x = element_blank())+
+    labs(title = "Daily tracker usage frequency",
+         x = " ",
+         y = "User Percentage",
+         fill = "Daily usage"),
+  ggplot(hourly_tracker_usage_activity)+
+    geom_col(aes(x=tracker_usage_hourly,y=percent,fill=tracker_usage_hourly))+
+    geom_text(aes(x=tracker_usage_hourly,y=percent,label=round(percent)))+
+    expand_limits(y=c(0,100))+
+    theme(axis.text.x = element_blank())+
+    labs(title = "Tracker usage throughout a day",
+         x = " ",
+         y = "User Percentage",
+         fill = "Hourly usage in a day")
+)
+```
+
+*Conclusions*  
+
+* 64% users wear the tracker everyday with an additional 33% users wearing it more often than not.  
+* 51% users wear the tracker all throughout the day.  
+* On an average, 97% users wear it for at least more than 12 hours in a day.
+
+
+#### *User Sleep pattern analysis*  
+
+##### **How many times to users sleep in a day?**
+```{r}
+daily_sleep %>% 
+  group_by(totalsleeprecords) %>% 
+  ggplot()+
+   geom_bar(aes(x=totalsleeprecords))+
+   labs(title = "How many times do users sleep in a day?",
+        x = "Total sleep records",
+        y = " ")
+```
+
+*Conclusion:* Maximum users usually sleep only once a day. Getting to sleep more than once a day or taking naps is relatively rarer among this cohort.
+
+
+**Reformatting sleep data for further analysis:**
+```{r}
+s_sleep <- daily_sleep %>% 
+  group_by(id) %>% 
+  summarise(avg_timeinbed=mean(totaltimeinbed),avg_asleep=mean(totalminutesasleep))
+s_sleep$id <- as.factor(s_sleep$id)
+```
+
+**What is mean hours of sleep of this set of users?**
+```{r}
+s_sleep %>% 
+  mutate(hours_asleep=avg_asleep/60) %>% 
+  summarise(mean_hours_asleep = mean(hours_asleep))
+```
+
+##### **How many hours do users sleep in a day on an average?**
+```{r}
+s_sleep %>% 
+  mutate(hours_asleep=avg_asleep/60) %>%  
+  ggplot()+
+   geom_col(aes(x=id,y=hours_asleep,fill=id))+
+   geom_hline(yintercept = 7)+
+   geom_hline(yintercept = 6.3,color="red")+
+   theme(legend.position = "none",axis.text.x = element_text(angle = 90))+
+   labs(title = "On an average, how many hours do users sleep daily?",
+        x = "User ID",
+        y = "Average number of hours asleep daily")+
+   annotate("text",x="1644430081",y=7.3,label="Adults: 7hrs+",
+           size=2.5, fontface="bold")+
+   annotate("text",x="1644430081",y=6.6,label="Mean: 6.3hrs",
+           size=2.5, fontface="bold", color="red")
+```
+
+*Conclusion:* It is healthy to sleep at least 7 hours a day for adults. (Reference: [CDC](https://www.cdc.gov/sleep/features/getting-enough-sleep.html)). This cohort sleeps for about 6 hours daily on an average. 
+
+
+##### **Do people fall asleep immediately?**
+```{r}
+ggplot(s_sleep)+
+  geom_col(aes(x=id,y=avg_timeinbed),fill="red")+
+  geom_col(aes(x=id,y=avg_asleep),fill="green")+
+  theme(axis.text.x=element_text(angle=90))+
+  labs(title = "Do users fall asleep immediately?",
+       subtitle = "Average time spent lying in bed as compared to average time spent sleeping",
+       y = "Time in minutes",
+       x = "User ID")+
+  annotate("text",x="2026352035",y=830,label="Average time lying in bed",
+           color="dark red",angle=30, size=3)+
+  annotate("text", x= "2026352035",y=600, label="Average time asleep",
+           color="dark green",angle=30, size=3)
+
+s_sleep %>% 
+  mutate(minutes_taken_to_sleep = avg_timeinbed - avg_asleep) %>% 
+  summarize(avg_timetofallasleep = mean(minutes_taken_to_sleep))
+```
+
+*Conclusions*  
+
+* Very few users are able to sleep almost immediately after lying down. Most users take some minutes to fall a asleep.  
+* On an average, the people of this cohort take approximately 40 minutes to actually fall asleep after lying down.  
+
+### **ACT/RECOMMENDATIONS**
+
+* Users should be asked to fill in their height and weight in the mobile app so that their BMIs can be calculated. For healthy users, the mobile app could prompt notifications/alarms at around 6PM to fulfill the remaining of their daily requirement of 7500 steps. Users that aim to lose weight (BMI>25), could be prompted to complete 10,000 steps if not done already.  
+
+* The app could display a 'calories burnt in a week/month' and 'weight lost' analysis along with the daily steps completed to further motivate the users.  
+
+* The fitbit study suggests that most users are serious about their fitness and wear the tracker quite often. As Bellabeat's Leaf tracker caters to women, aesthetics and comfortable designs could be made a prime focus to motivate more users to wear it all day everyday.  
+
+* The study points out that most users don't get to complete the recommended 7 hours of sleep and an average of about 40 minutes are wasted in trying to fall asleep. The app could share some relaxing music links, recipes of sleep inducing foods (like chamomile tea) and some tips to fall asleep sooner. Perhaps a daily planner can help users take out some time for a nap or extend their sleeping time based on their routines.
